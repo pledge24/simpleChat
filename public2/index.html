@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Client</title>
+    <style>
+        #chat {
+            border: 1px solid #ccc;
+            height: 300px;
+            overflow-y: scroll;
+        }
+        .message {
+            margin: 10px 0;
+        }
+        .system {
+            color: red;
+        }
+    </style>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io('http://localhost:3000', {
+                auth: {
+                    nickname: prompt('Enter your nickname:')
+                }
+            });
+
+            // Message elements
+            const chat = document.getElementById('chat');
+            const messageForm = document.getElementById('messageForm');
+            const messageInput = document.getElementById('messageInput');
+
+            // Room elements
+            const roomForm = document.getElementById('roomForm');
+            const roomInput = document.getElementById('roomInput');
+            const joinRoomButton = document.getElementById('joinRoomButton');
+            const leaveRoomButton = document.getElementById('leaveRoomButton');
+            const currentRoomDisplay = document.getElementById('currentRoomDisplay');
+            let currentRoom = null;
+
+            // Append message to chat
+            function appendMessage(content, className = 'message') {
+                const div = document.createElement('div');
+                div.className = className;
+                div.textContent = content;
+                chat.appendChild(div);
+                chat.scrollTop = chat.scrollHeight;
+            }
+
+            // Socket event handlers
+            socket.on('connect', () => {
+                appendMessage(`Connected as ${socket.auth.nickname}`, 'system');
+            });
+
+            socket.on('all_chat', (data) => {
+                appendMessage(`[${data.username}] ${data.msg}`);
+            });
+
+            socket.on('room_chat', (data) => {
+                appendMessage(`[${data.room}][${data.username}] ${data.msg}`);
+            });
+
+            socket.on('dm', (data) => {
+                appendMessage(`[DM][${data.username}] ${data.msg}`);
+            });
+
+            socket.on('rooms', (rooms) => {
+                appendMessage(`You are in rooms: ${rooms.join(', ')}`, 'system');
+            });
+
+            socket.on('system', (msg) => {
+                appendMessage(msg, 'system');
+            });
+
+            socket.on('disconnect', () => {
+                appendMessage('Disconnected from the server', 'system');
+            });
+
+            // Send all chat message
+            messageForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const msg = messageInput.value;
+                if (msg && !currentRoom) {
+                    socket.emit('all_chat', msg);
+                    messageInput.value = '';
+                } else if (msg && currentRoom) {
+                    socket.emit('room_chat', { room: currentRoom, msg });
+                    messageInput.value = '';
+                }
+            });
+
+            // Join room
+            joinRoomButton.addEventListener('click', () => {
+                const room = roomInput.value;
+                if (room) {
+                    socket.emit('join', room);
+                    currentRoom = room;
+                    currentRoomDisplay.textContent = `Current Room: ${currentRoom}`;
+                    roomInput.value = '';
+                }
+            });
+
+            // Leave room
+            leaveRoomButton.addEventListener('click', () => {
+                if (currentRoom) {
+                    socket.emit('leave', currentRoom);
+                    currentRoom = null;
+                    currentRoomDisplay.textContent = `Not in any room`;
+                }
+            });
+
+            // Request rooms info
+            document.getElementById('getRoomsButton').addEventListener('click', () => {
+                socket.emit('rooms');
+            });
+
+            // Send direct message
+            document.getElementById('dmForm').addEventListener('submit', (e) => {
+                e.preventDefault();
+                const to = document.getElementById('dmTo').value;
+                const msg = document.getElementById('dmMessage').value;
+                if (to && msg) {
+                    socket.emit('dm', { to, msg });
+                    document.getElementById('dmMessage').value = '';
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div id="chat"></div>
+    <form id="messageForm">
+        <input id="messageInput" type="text" placeholder="Enter message" />
+        <button type="submit">Send</button>
+    </form>
+    <form id="roomForm">
+        <input id="roomInput" type="text" placeholder="Enter room name" />
+        <button type="button" id="joinRoomButton">Join Room</button>
+        <button type="button" id="leaveRoomButton">Leave Room</button>
+        <div id="currentRoomDisplay">Not in any room</div>
+    </form>
+    <button id="getRoomsButton">Get Rooms</button>
+    <form id="dmForm">
+        <input id="dmTo" type="text" placeholder="Recipient nickname" />
+        <input id="dmMessage" type="text" placeholder="Enter message" />
+        <button type="submit">Send DM</button>
+    </form>
+</body>
+</html>
